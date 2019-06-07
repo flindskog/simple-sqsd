@@ -29,7 +29,7 @@ type config struct {
 	HTTPHMACHeader string
 	HMACSecretKey  []byte
 
-	HTTPHealthPath        string
+	HTTPHealthURL         string
 	HTTPHealthWait        int
 	HTTPHealthInterval    int
 	HTTPHealthSucessCount int
@@ -48,7 +48,7 @@ func main() {
 	c.HTTPURL = os.Getenv("SQSD_HTTP_URL")
 	c.HTTPContentType = os.Getenv("SQSD_HTTP_CONTENT_TYPE")
 
-	c.HTTPHealthPath = os.Getenv("SQSD_HTTP_HEALTH_PATH")
+	c.HTTPHealthURL = os.Getenv("SQSD_HTTP_HEALTH_URL")
 	c.HTTPHealthWait = getEnvInt("SQSD_HTTP_HEALTH_WAIT", 5)
 	c.HTTPHealthInterval = getEnvInt("SQSD_HTTP_HEALTH_INTERVAL", 5)
 	c.HTTPHealthSucessCount = getEnvInt("SQSD_HTTP_HEALTH_SUCCESS_COUNT", 1)
@@ -89,21 +89,24 @@ func main() {
 		"httpPath":     c.HTTPURL,
 	})
 
-	if len(c.HTTPHealthPath) != 0 {
+	if len(c.HTTPHealthURL) != 0 {
 		numSuccesses := 0
-		healthURL := fmt.Sprintf("%s%s", c.HTTPURL, c.HTTPHealthPath)
+		healthURL := fmt.Sprintf("%s", c.HTTPHealthURL)
 		log.Infof("Waiting %d seconds before staring health check at '%s'", c.HTTPHealthWait, healthURL)
 		time.Sleep(time.Duration(c.HTTPHealthWait) * time.Second)
 		for {
-			if resp, err := http.Get(healthURL); err == nil {
-				log.Infof("%#v", resp)
+			if resp, err := http.Get(healthURL); err == nil && resp.StatusCode == 200 {
+				log.Debugf("%#v", resp)
+				numSuccesses++
 				if numSuccesses == c.HTTPHealthSucessCount {
 					break
-				} else {
-					numSuccesses++
 				}
 			} else {
-				log.Debugf("Health check failed: %s. Waiting for %d seconds before next attempt", err, c.HTTPHealthInterval)
+				var msg = fmt.Sprint(err)
+				if err == nil {
+					msg = fmt.Sprintf("Server returned status code %d", resp.StatusCode)
+				}
+				log.Infof("Health check failed: error:%s. Waiting for %d seconds before next attempt", msg, c.HTTPHealthInterval)
 				time.Sleep(time.Duration(c.HTTPHealthInterval) * time.Second)
 			}
 		}
